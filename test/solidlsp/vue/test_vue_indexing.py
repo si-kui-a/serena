@@ -118,7 +118,7 @@ def _make_operational_server(vue_files: list[str], failing_files: frozenset[str]
     srv._ls_operational_lock = threading.Lock()
     srv._has_waited_for_cross_file_references = False
     wait_calls = [0]
-    srv._get_wait_time_for_cross_file_referencing = lambda: 0
+    srv._get_wait_time_for_cross_file_referencing = lambda: 0  # type: ignore[method-assign]
     real_ensure_ls_operational = VueLanguageServer._ensure_ls_operational.__get__(srv)
 
     def _ensure_ls_operational_counting_sleeps() -> None:
@@ -193,7 +193,7 @@ def test_ensure_ls_operational_backs_off_between_retries() -> None:
     srv._ts_server = cast(Any, _FakeTSServer())
     srv._ensure_ls_operational()
     assert srv._vue_files_indexed is False, "must not retry before the backoff window elapses"
-    assert cast(Any, srv._ts_server).indexing_expected_count == 0
+    assert srv._ts_server.indexing_expected_count == 0
 
     # simulate the backoff window having elapsed
     srv._vue_index_retry_after = 0
