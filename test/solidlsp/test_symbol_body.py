@@ -1,9 +1,12 @@
 """Unit tests for SymbolBody / SymbolBodyFactory that need no running language server."""
 
+from pathlib import Path
+
 import pytest
 
-from solidlsp.ls import SymbolBodyFactory
+from solidlsp.ls import SolidLanguageServer, SymbolBodyFactory
 from solidlsp.ls_exceptions import InvalidTextLocationError
+from solidlsp.util.cache import load_cache, save_cache
 
 
 class _StubBuffer:
@@ -163,3 +166,24 @@ def test_selection_range_mismatch_logs_on_every_get_text_call(caplog: pytest.Log
         body.get_text()
         body.get_text()
     assert len(caplog.records) == 3
+
+
+def test_document_symbol_cache_version_bump_invalidates_pre_fix_cache(tmp_path: Path) -> None:
+    """SymbolBody has no __setstate__, so unpickling an entry cached under the old (pre-fa09b090)
+    shape restores an instance whose __dict__ is missing the new _selection_range_mismatch field
+    entirely - and get_text() reads that field unconditionally on every call. Without a cache
+    version bump, a document_symbols_cache file saved before this fix would be loaded as-is and
+    get_text() would raise AttributeError instead of just missing the cache-hit warning.
+
+    This doesn't unpickle an actual old-shape SymbolBody (constructing one would just be testing
+    Python's own pickle behaviour); it verifies the actual invalidation mechanism this fix relies
+    on: a cache file saved under the pre-fix version number must be rejected by load_cache() once
+    read back under the current version, so a stale-shaped entry is never handed back to callers.
+    """
+    cache_file = tmp_path / "document_symbols.pkl"
+    pre_fix_version = 4  # DOCUMENT_SYMBOL_CACHE_VERSION before this fix bumped it
+    assert pre_fix_version != SolidLanguageServer.DOCUMENT_SYMBOL_CACHE_VERSION
+
+    save_cache(str(cache_file), pre_fix_version, {"some/file.py": ("content-hash", "pre-fix cache entry")})
+
+    assert load_cache(str(cache_file), SolidLanguageServer.DOCUMENT_SYMBOL_CACHE_VERSION) is None
